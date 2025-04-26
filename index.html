@@ -11,6 +11,7 @@
             overflow: hidden;
             touch-action: none;
             background-color: #000;
+            font-family: Arial, sans-serif;
         }
         #gameCanvas {
             display: block;
@@ -47,17 +48,41 @@
             height: 100%;
             background: black;
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             color: white;
-            font-family: Arial, sans-serif;
             z-index: 100;
+        }
+        #loadingStatus {
+            margin-top: 20px;
+            color: #ccc;
+        }
+        #errorMessage {
+            color: red;
+            margin-top: 20px;
+            display: none;
+            max-width: 80%;
+            text-align: center;
+        }
+        #forceStartBtn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            display: none;
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
     <div class="loading-screen" id="loadingScreen">
-        Loading game assets...
+        <h2>Loading Game Assets</h2>
+        <div id="loadingStatus">Loading 0/6</div>
+        <div id="errorMessage"></div>
+        <button id="forceStartBtn">Force Start Game</button>
     </div>
     <canvas id="gameCanvas"></canvas>
     <div class="controls">
@@ -67,251 +92,377 @@
     </div>
 
 <script>
-// Loading screen management
-const loadingScreen = document.getElementById('loadingScreen');
-let assetsLoaded = 0;
-const totalAssets = 5; // Update this number based on your actual assets
+// Debugging and error handling
+console.log("Initializing game...");
 
-// Mobile-friendly canvas setup
+// DOM elements
+const loadingScreen = document.getElementById('loadingScreen');
+const loadingStatus = document.getElementById('loadingStatus');
+const errorMessage = document.getElementById('errorMessage');
+const forceStartBtn = document.getElementById('forceStartBtn');
+
+// Game state
+let gameInitialized = false;
+let assetsLoaded = 0;
+const totalAssets = 6; // Background, GameOver, Live, Player, Enemy, Music
+
+// Update loading status
+function updateLoadingStatus() {
+    loadingStatus.textContent = `Loading ${assetsLoaded}/${totalAssets}`;
+    console.log(`Assets loaded: ${assetsLoaded}/${totalAssets}`);
+}
+
+// Show error message
+function showError(msg) {
+    console.error(msg);
+    errorMessage.textContent = msg;
+    errorMessage.style.display = 'block';
+    forceStartBtn.style.display = 'block';
+}
+
+// Canvas setup
 const canvas = document.getElementById('gameCanvas');
-const resizeCanvas = () => {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    platform.y = canvas.height - 100;
-};
+const context = canvas.getContext('2d');
+
+function resizeCanvas() {
+    try {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        console.log(`Canvas resized to: ${canvas.width}x${canvas.height}`);
+    } catch (e) {
+        showError("Failed to initialize canvas: " + e.message);
+    }
+}
+
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-const context = canvas.getContext('2d');
+// Game assets with error handling
+function loadAsset(img, src, name) {
+    return new Promise((resolve, reject) => {
+        img.onload = () => {
+            assetsLoaded++;
+            updateLoadingStatus();
+            console.log(`Loaded: ${name}`);
+            resolve();
+        };
+        img.onerror = () => {
+            showError(`Failed to load: ${name} (${src})`);
+            reject(`Failed to load ${name}`);
+        };
+        img.src = src;
+    });
+}
 
-// Define the background image
-let backgroundImage = new Image();
-backgroundImage.onload = () => {
-    assetsLoaded++;
-    if (assetsLoaded === totalAssets) loadingScreen.style.display = 'none';
-};
-backgroundImage.src = 'Background.png'; // Replace with your image path
+// Audio with error handling
+function loadAudio(audio, src, name) {
+    return new Promise((resolve, reject) => {
+        audio.oncanplaythrough = () => {
+            assetsLoaded++;
+            updateLoadingStatus();
+            console.log(`Loaded: ${name}`);
+            resolve();
+        };
+        audio.onerror = () => {
+            showError(`Failed to load: ${name} (${src})`);
+            reject(`Failed to load ${name}`);
+        };
+        audio.src = src;
+        audio.load();
+    });
+}
 
-let gameOver = false;
-let gameOverImage = new Image();
-gameOverImage.onload = () => {
-    assetsLoaded++;
-    if (assetsLoaded === totalAssets) loadingScreen.style.display = 'none';
-};
-gameOverImage.src = 'GameOver.png'; // Replace with your image path
-
-// Define the life image
-let lifeImage = new Image();
-lifeImage.onload = () => {
-    assetsLoaded++;
-    if (assetsLoaded === totalAssets) loadingScreen.style.display = 'none';
-};
-lifeImage.src = 'live.png'; // Replace with your image path
-
-let music = new Audio('r-c.mp3'); // Replace with your sound file
-music.oncanplaythrough = () => {
-    assetsLoaded++;
-    if (assetsLoaded === totalAssets) loadingScreen.style.display = 'none';
-};
-
-// Define the player
-let player = {
-    x: 50,
-    y: 400,
-    width: 100,
-    height: 100,
-    dx: 0,
-    dy: 0,
-    gravity: 0.5,
-    jumpForce: 12,
-    jumping: false,
-    sprite: new Image(),
-    lives: 3,
-};
-player.sprite.onload = () => {
-    assetsLoaded++;
-    if (assetsLoaded === totalAssets) loadingScreen.style.display = 'none';
-};
-player.sprite.src = "PLayer.png"; // Replace with your image path
-
-// Define the enemy
-let enemy = {
-    x: 300,
-    y: 400,
-    width: 50,
-    height: 50,
-    dx: -2,
-    dy: 0,
-    gravity: 0.5,
-    jumpForce: 10,
-    jumping: false,
-    sprite: new Image(),
-    rotation: 0,
-    dead: false,
-};
-enemy.sprite.onload = () => {
-    assetsLoaded++;
-    if (assetsLoaded === totalAssets) loadingScreen.style.display = 'none';
-};
-enemy.sprite.src = "Enemy.png"; // Replace with your image path
-
-// Define the platform
-let platform = {
-    x: 0,
-    y: canvas.height - 100,
-    width: canvas.width,
-    height: 50,
-    color: '#0c0'
-};
-
-// Function to draw the game
-function draw() {
-    context.clearRect(0, 0, canvas.width, canvas.height);
-
-    if (gameOver) {
-        context.drawImage(gameOverImage, 0, 0, canvas.width, canvas.height);
-    } else {
-        // Draw background
-        context.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+// Load all assets
+async function loadAssets() {
+    try {
+        console.log("Starting asset loading...");
         
-        // Draw lives
-        for (let i = 0; i < player.lives; i++) {
-            context.drawImage(lifeImage, 10 + i * 30, 10, 30, 30);
-        }
-
-        // Draw player
-        context.drawImage(player.sprite, player.x, player.y, player.width, player.height);
-
-        // Draw enemy if not dead
-        if (!enemy.dead) {
-            context.save();
-            context.translate(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
-            context.rotate(enemy.rotation);
-            context.drawImage(enemy.sprite, -enemy.width / 2, -enemy.height / 2, enemy.width, enemy.height);
-            context.restore();
-        }
+        // Load images
+        const backgroundImage = new Image();
+        const gameOverImage = new Image();
+        const lifeImage = new Image();
+        const playerSprite = new Image();
+        const enemySprite = new Image();
+        
+        // Load audio
+        const music = new Audio();
+        
+        await Promise.all([
+            loadAsset(backgroundImage, 'Background.png', 'Background'),
+            loadAsset(gameOverImage, 'GameOver.png', 'Game Over Screen'),
+            loadAsset(lifeImage, 'live.png', 'Life Icon'),
+            loadAsset(playerSprite, 'Player.png', 'Player Sprite'),
+            loadAsset(enemySprite, 'Enemy.png', 'Enemy Sprite'),
+            loadAudio(music, 'r-c.mp3', 'Background Music')
+        ]);
+        
+        return {
+            backgroundImage,
+            gameOverImage,
+            lifeImage,
+            playerSprite,
+            enemySprite,
+            music
+        };
+    } catch (e) {
+        throw new Error("Asset loading failed: " + e);
     }
 }
 
-// Game update function
+// Game objects
+let player, enemy, platform;
+
+// Initialize game
+function initGame(assets) {
+    console.log("Initializing game objects...");
+    
+    // Player
+    player = {
+        x: 50,
+        y: 400,
+        width: 100,
+        height: 100,
+        dx: 0,
+        dy: 0,
+        gravity: 0.5,
+        jumpForce: 12,
+        jumping: false,
+        sprite: assets.playerSprite,
+        lives: 3,
+    };
+
+    // Enemy
+    enemy = {
+        x: 300,
+        y: 400,
+        width: 50,
+        height: 50,
+        dx: -2,
+        dy: 0,
+        gravity: 0.5,
+        jumpForce: 10,
+        jumping: false,
+        sprite: assets.enemySprite,
+        rotation: 0,
+        dead: false,
+    };
+
+    // Platform
+    platform = {
+        x: 0,
+        y: canvas.height - 100,
+        width: canvas.width,
+        height: 50,
+        color: '#0c0'
+    };
+
+    gameInitialized = true;
+    console.log("Game initialized successfully");
+}
+
+// Draw function
+function draw() {
+    try {
+        context.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (gameOver) {
+            context.drawImage(assets.gameOverImage, 0, 0, canvas.width, canvas.height);
+        } else {
+            // Draw background
+            context.drawImage(assets.backgroundImage, 0, 0, canvas.width, canvas.height);
+            
+            // Draw lives
+            for (let i = 0; i < player.lives; i++) {
+                context.drawImage(assets.lifeImage, 10 + i * 30, 10, 30, 30);
+            }
+
+            // Draw player
+            context.drawImage(player.sprite, player.x, player.y, player.width, player.height);
+
+            // Draw enemy if not dead
+            if (!enemy.dead) {
+                context.save();
+                context.translate(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
+                context.rotate(enemy.rotation);
+                context.drawImage(enemy.sprite, -enemy.width / 2, -enemy.height / 2, enemy.width, enemy.height);
+                context.restore();
+            }
+        }
+    } catch (e) {
+        console.error("Drawing error:", e);
+    }
+}
+
+// Update function
 function update() {
-    if (gameOver) return;
+    if (gameOver || !gameInitialized) return;
     
-    // Update player position
-    player.x += player.dx;
-    player.y += player.dy;
+    try {
+        // Update player position
+        player.x += player.dx;
+        player.y += player.dy;
 
-    // Collision with enemy
-    if (!enemy.dead && 
-        player.x < enemy.x + enemy.width && 
-        player.x + player.width > enemy.x && 
-        player.y < enemy.y + enemy.height && 
-        player.y + player.height > enemy.y) {
-        player.lives--;
-        player.x = 50;
-        player.y = 100;
-        if (player.lives < 0) gameOver = true;
+        // Collision with enemy
+        if (!enemy.dead && 
+            player.x < enemy.x + enemy.width && 
+            player.x + player.width > enemy.x && 
+            player.y < enemy.y + enemy.height && 
+            player.y + player.height > enemy.y) {
+            player.lives--;
+            player.x = 50;
+            player.y = 100;
+            if (player.lives < 0) gameOver = true;
+        }
+
+        // Platform collision
+        if (player.y + player.height > platform.y) {
+            player.y = platform.y - player.height;
+            player.jumping = false;
+        } else {
+            player.dy += player.gravity;
+        }
+
+        // Screen boundaries
+        player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+        player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
+
+        // Update enemy
+        enemy.x += enemy.dx;
+        enemy.y += enemy.dy;
+        
+        if (enemy.x <= 0 || enemy.x + enemy.width >= canvas.width) {
+            enemy.dx *= -1;
+            enemy.rotation += Math.PI;
+        }
+        enemy.y = Math.max(0, Math.min(canvas.height - enemy.height, enemy.y));
+    } catch (e) {
+        console.error("Update error:", e);
     }
-
-    // Platform collision
-    if (player.y + player.height > platform.y) {
-        player.y = platform.y - player.height;
-        player.jumping = false;
-    } else {
-        player.dy += player.gravity;
-    }
-
-    // Screen boundaries
-    player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
-    player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
-
-    // Update enemy
-    enemy.x += enemy.dx;
-    enemy.y += enemy.dy;
-    
-    if (enemy.x <= 0 || enemy.x + enemy.width >= canvas.width) {
-        enemy.dx *= -1;
-        enemy.rotation += Math.PI;
-    }
-    enemy.y = Math.max(0, Math.min(canvas.height - enemy.height, enemy.y));
 }
 
-// Mobile control handlers
-let moveLeft = false;
-let moveRight = false;
+// Control handlers
+function setupControls() {
+    console.log("Setting up controls...");
+    
+    let moveLeft = false;
+    let moveRight = false;
 
-document.getElementById('leftBtn').addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    moveLeft = true;
-    player.dx = -5;
-});
-
-document.getElementById('leftBtn').addEventListener('touchend', (e) => {
-    e.preventDefault();
-    moveLeft = false;
-    if (!moveRight) player.dx = 0;
-});
-
-document.getElementById('rightBtn').addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    moveRight = true;
-    player.dx = 5;
-});
-
-document.getElementById('rightBtn').addEventListener('touchend', (e) => {
-    e.preventDefault();
-    moveRight = false;
-    if (!moveLeft) player.dx = 0;
-});
-
-document.getElementById('jumpBtn').addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    if (!player.jumping) {
-        player.dy = -player.jumpForce;
-        player.jumping = true;
-        music.play();
-    }
-});
-
-// Keyboard controls for desktop
-window.addEventListener('keydown', (e) => {
-    if (e.code === "ArrowLeft") {
+    // Left button
+    const leftBtn = document.getElementById('leftBtn');
+    leftBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        moveLeft = true;
         player.dx = -5;
-    } else if (e.code === "ArrowRight") {
-        player.dx = 5;
-    } else if (e.code === "Space" && !player.jumping) {
-        player.dy = -player.jumpForce;
-        player.jumping = true;
-        music.play();
-    }
-});
+    });
+    leftBtn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        moveLeft = false;
+        if (!moveRight) player.dx = 0;
+    });
 
-window.addEventListener('keyup', (e) => {
-    if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
-        player.dx = 0;
-    }
-});
+    // Right button
+    const rightBtn = document.getElementById('rightBtn');
+    rightBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        moveRight = true;
+        player.dx = 5;
+    });
+    rightBtn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        moveRight = false;
+        if (!moveLeft) player.dx = 0;
+    });
+
+    // Jump button
+    const jumpBtn = document.getElementById('jumpBtn');
+    jumpBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        if (!player.jumping) {
+            player.dy = -player.jumpForce;
+            player.jumping = true;
+            assets.music.play().catch(e => console.log("Audio play failed:", e));
+        }
+    });
+
+    // Keyboard controls
+    window.addEventListener('keydown', (e) => {
+        if (e.code === "ArrowLeft") {
+            player.dx = -5;
+        } else if (e.code === "ArrowRight") {
+            player.dx = 5;
+        } else if (e.code === "Space" && !player.jumping) {
+            player.dy = -player.jumpForce;
+            player.jumping = true;
+            assets.music.play().catch(e => console.log("Audio play failed:", e));
+        }
+    });
+
+    window.addEventListener('keyup', (e) => {
+        if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
+            player.dx = 0;
+        }
+    });
+}
 
 // Game loop
 function gameLoop() {
-    update();
-    draw();
-    requestAnimationFrame(gameLoop);
+    try {
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+    } catch (e) {
+        console.error("Game loop error:", e);
+        showError("Game error: " + e.message);
+    }
 }
 
-// Start the game when all assets are loaded
-if (assetsLoaded === totalAssets) {
-    loadingScreen.style.display = 'none';
-    gameLoop();
-} else {
-    backgroundImage.onload = player.sprite.onload = enemy.sprite.onload = 
-    lifeImage.onload = gameOverImage.onload = function() {
-        assetsLoaded++;
-        if (assetsLoaded === totalAssets) {
-            loadingScreen.style.display = 'none';
-            gameLoop();
+// Main initialization
+let assets;
+loadAssets()
+    .then(loadedAssets => {
+        assets = loadedAssets;
+        initGame(assets);
+        setupControls();
+        loadingScreen.style.display = 'none';
+        console.log("Starting game loop...");
+        gameLoop();
+    })
+    .catch(e => {
+        showError("Game initialization failed. " + e);
+    });
+
+// Force start button
+forceStartBtn.addEventListener('click', () => {
+    if (!gameInitialized) {
+        console.warn("Force starting game with potentially missing assets");
+        // Create placeholder assets if needed
+        if (!assets) {
+            assets = {
+                backgroundImage: createPlaceholder(800, 600, '#333'),
+                gameOverImage: createPlaceholder(800, 600, '#f00'),
+                lifeImage: createPlaceholder(30, 30, '#f00'),
+                playerSprite: createPlaceholder(100, 100, '#0f0'),
+                enemySprite: createPlaceholder(50, 50, '#f00'),
+                music: new Audio()
+            };
         }
-    };
+        initGame(assets);
+        setupControls();
+        loadingScreen.style.display = 'none';
+        gameLoop();
+    }
+});
+
+function createPlaceholder(width, height, color) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, width, height);
+    const img = new Image();
+    img.src = canvas.toDataURL();
+    return img;
 }
 </script>
 </body>
