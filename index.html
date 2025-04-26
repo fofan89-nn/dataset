@@ -10,8 +10,10 @@
             padding: 0;
             overflow: hidden;
             touch-action: none;
+            background-color: #000;
         }
         #gameCanvas {
+            display: block;
             touch-action: none;
         }
         .controls {
@@ -24,20 +26,39 @@
             box-sizing: border-box;
         }
         .control-btn {
-            width: 60px;
-            height: 60px;
-            background: rgba(255, 255, 255, 0.5);
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 255, 255, 0.3);
             border-radius: 50%;
             display: flex;
             justify-content: center;
             align-items: center;
-            font-size: 24px;
+            font-size: 30px;
+            color: white;
             user-select: none;
             touch-action: none;
+            border: 2px solid rgba(255,255,255,0.5);
+        }
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: black;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-family: Arial, sans-serif;
+            z-index: 100;
         }
     </style>
 </head>
 <body>
+    <div class="loading-screen" id="loadingScreen">
+        Loading game assets...
+    </div>
     <canvas id="gameCanvas"></canvas>
     <div class="controls">
         <div class="control-btn" id="leftBtn">←</div>
@@ -46,18 +67,174 @@
     </div>
 
 <script>
+// Loading screen management
+const loadingScreen = document.getElementById('loadingScreen');
+let assetsLoaded = 0;
+const totalAssets = 5; // Update this number based on your actual assets
+
 // Mobile-friendly canvas setup
 const canvas = document.getElementById('gameCanvas');
 const resizeCanvas = () => {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
+    platform.y = canvas.height - 100;
 };
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
 const context = canvas.getContext('2d');
 
-// ... [Keep all your existing image and object definitions] ...
+// Define the background image
+let backgroundImage = new Image();
+backgroundImage.onload = () => {
+    assetsLoaded++;
+    if (assetsLoaded === totalAssets) loadingScreen.style.display = 'none';
+};
+backgroundImage.src = 'Background.png'; // Replace with your image path
+
+let gameOver = false;
+let gameOverImage = new Image();
+gameOverImage.onload = () => {
+    assetsLoaded++;
+    if (assetsLoaded === totalAssets) loadingScreen.style.display = 'none';
+};
+gameOverImage.src = 'GameOver.png'; // Replace with your image path
+
+// Define the life image
+let lifeImage = new Image();
+lifeImage.onload = () => {
+    assetsLoaded++;
+    if (assetsLoaded === totalAssets) loadingScreen.style.display = 'none';
+};
+lifeImage.src = 'live.png'; // Replace with your image path
+
+let music = new Audio('r-c.mp3'); // Replace with your sound file
+music.oncanplaythrough = () => {
+    assetsLoaded++;
+    if (assetsLoaded === totalAssets) loadingScreen.style.display = 'none';
+};
+
+// Define the player
+let player = {
+    x: 50,
+    y: 400,
+    width: 100,
+    height: 100,
+    dx: 0,
+    dy: 0,
+    gravity: 0.5,
+    jumpForce: 12,
+    jumping: false,
+    sprite: new Image(),
+    lives: 3,
+};
+player.sprite.onload = () => {
+    assetsLoaded++;
+    if (assetsLoaded === totalAssets) loadingScreen.style.display = 'none';
+};
+player.sprite.src = "PLayer.png"; // Replace with your image path
+
+// Define the enemy
+let enemy = {
+    x: 300,
+    y: 400,
+    width: 50,
+    height: 50,
+    dx: -2,
+    dy: 0,
+    gravity: 0.5,
+    jumpForce: 10,
+    jumping: false,
+    sprite: new Image(),
+    rotation: 0,
+    dead: false,
+};
+enemy.sprite.onload = () => {
+    assetsLoaded++;
+    if (assetsLoaded === totalAssets) loadingScreen.style.display = 'none';
+};
+enemy.sprite.src = "Enemy.png"; // Replace with your image path
+
+// Define the platform
+let platform = {
+    x: 0,
+    y: canvas.height - 100,
+    width: canvas.width,
+    height: 50,
+    color: '#0c0'
+};
+
+// Function to draw the game
+function draw() {
+    context.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (gameOver) {
+        context.drawImage(gameOverImage, 0, 0, canvas.width, canvas.height);
+    } else {
+        // Draw background
+        context.drawImage(backgroundImage, 0, 0, canvas.width, canvas.height);
+        
+        // Draw lives
+        for (let i = 0; i < player.lives; i++) {
+            context.drawImage(lifeImage, 10 + i * 30, 10, 30, 30);
+        }
+
+        // Draw player
+        context.drawImage(player.sprite, player.x, player.y, player.width, player.height);
+
+        // Draw enemy if not dead
+        if (!enemy.dead) {
+            context.save();
+            context.translate(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
+            context.rotate(enemy.rotation);
+            context.drawImage(enemy.sprite, -enemy.width / 2, -enemy.height / 2, enemy.width, enemy.height);
+            context.restore();
+        }
+    }
+}
+
+// Game update function
+function update() {
+    if (gameOver) return;
+    
+    // Update player position
+    player.x += player.dx;
+    player.y += player.dy;
+
+    // Collision with enemy
+    if (!enemy.dead && 
+        player.x < enemy.x + enemy.width && 
+        player.x + player.width > enemy.x && 
+        player.y < enemy.y + enemy.height && 
+        player.y + player.height > enemy.y) {
+        player.lives--;
+        player.x = 50;
+        player.y = 100;
+        if (player.lives < 0) gameOver = true;
+    }
+
+    // Platform collision
+    if (player.y + player.height > platform.y) {
+        player.y = platform.y - player.height;
+        player.jumping = false;
+    } else {
+        player.dy += player.gravity;
+    }
+
+    // Screen boundaries
+    player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+    player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
+
+    // Update enemy
+    enemy.x += enemy.dx;
+    enemy.y += enemy.dy;
+    
+    if (enemy.x <= 0 || enemy.x + enemy.width >= canvas.width) {
+        enemy.dx *= -1;
+        enemy.rotation += Math.PI;
+    }
+    enemy.y = Math.max(0, Math.min(canvas.height - enemy.height, enemy.y));
+}
 
 // Mobile control handlers
 let moveLeft = false;
@@ -96,26 +273,46 @@ document.getElementById('jumpBtn').addEventListener('touchstart', (e) => {
     }
 });
 
-// ... [Keep the rest of your existing game code] ...
+// Keyboard controls for desktop
+window.addEventListener('keydown', (e) => {
+    if (e.code === "ArrowLeft") {
+        player.dx = -5;
+    } else if (e.code === "ArrowRight") {
+        player.dx = 5;
+    } else if (e.code === "Space" && !player.jumping) {
+        player.dy = -player.jumpForce;
+        player.jumping = true;
+        music.play();
+    }
+});
 
-// Update platform position based on canvas size
-platform.y = canvas.height - 100;
+window.addEventListener('keyup', (e) => {
+    if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
+        player.dx = 0;
+    }
+});
 
-// Modified update function for mobile
-function update() {
-    // Update player position based on velocity
-    player.x += player.dx;
-    player.y += player.dy;
-
-    // ... [Keep the rest of your existing update code] ... 
-}
-
-// Use requestAnimationFrame for smoother mobile performance
+// Game loop
 function gameLoop() {
     update();
+    draw();
     requestAnimationFrame(gameLoop);
 }
-gameLoop();
+
+// Start the game when all assets are loaded
+if (assetsLoaded === totalAssets) {
+    loadingScreen.style.display = 'none';
+    gameLoop();
+} else {
+    backgroundImage.onload = player.sprite.onload = enemy.sprite.onload = 
+    lifeImage.onload = gameOverImage.onload = function() {
+        assetsLoaded++;
+        if (assetsLoaded === totalAssets) {
+            loadingScreen.style.display = 'none';
+            gameLoop();
+        }
+    };
+}
 </script>
 </body>
 </html>
